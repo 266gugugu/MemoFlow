@@ -1,0 +1,15 @@
+{
+  "always_on_top": true,
+  "auto_start": true,
+  "preset_tags": [
+    "工作",
+    "学习",
+    "生活",
+    "重要",
+    "第五人格"
+  ],
+  "win_x": 676,
+  "win_y": -24,
+  "close_to_tray": true,
+  "auto_hide_seconds": 62
+}
