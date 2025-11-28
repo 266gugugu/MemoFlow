@@ -10,7 +10,7 @@ from PyQt6.QtGui import QAction, QColor, QCursor, QIcon, QPixmap, QPainter, QBru
 
 from .theme import AppTheme
 from .widgets import MemoListItemWidget, TagButton
-from .utils import DataStore, Settings
+from .utils import DataStore, Settings, AutoStart
 from .settings_ui import SettingsDialog
 from .floating_window import FloatingMemoWindow
 
@@ -20,6 +20,9 @@ class MainWindow(QMainWindow):
         super().__init__()
         self.settings = Settings()
         self.data_store = DataStore()
+
+        # 同步开机自启状态：根据 settings.json 中的配置自动设置注册表
+        self._sync_autostart()
 
         self.setWindowTitle("MemoFlow")
         self.resize(400, 600)
@@ -55,6 +58,20 @@ class MainWindow(QMainWindow):
         self.current_floating_index = new_index
         item = self.list_widget.item(new_index)
         self.on_item_clicked(item)
+
+    def _sync_autostart(self):
+        """同步开机自启状态：根据 settings.json 中的配置自动设置注册表"""
+        try:
+            auto_start = AutoStart()
+            config_enabled = self.settings.get("auto_start", False)
+            registry_enabled = auto_start.is_enabled()
+            
+            # 如果配置文件和注册表状态不一致，则同步
+            if config_enabled != registry_enabled:
+                auto_start.set_state(config_enabled)
+        except Exception:
+            # 静默处理错误，不影响程序启动
+            pass
 
     # ====================== 1. 首页 ======================
     def _init_home_page(self):
