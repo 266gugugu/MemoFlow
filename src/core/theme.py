@@ -1,11 +1,11 @@
-# src/theme.py
+# src/core/theme.py
 # -*- coding: utf-8 -*-
 
 class AppTheme:
     """集中管理应用的颜色和样式"""
     COLORS = {
         "bg_primary": "#2d2d30",
-        "bg_secondary": "#3e3e42",  # 【已补全：次级背景色】
+        "bg_secondary": "#3e3e42",
         "border": "#565869",
         "text_primary": "#ECECF1",
         "text_secondary": "#9CA3AF",

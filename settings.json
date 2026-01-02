@@ -1,5 +1,5 @@
 {
-  "always_on_top": true,
+  "always_on_top": false,
   "auto_start": true,
   "preset_tags": [
     "工作",

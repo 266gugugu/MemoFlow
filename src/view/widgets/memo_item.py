@@ -1,10 +1,9 @@
-# src/widgets.py
+# src/view/widgets/memo_item.py
 # -*- coding: utf-8 -*-
 from PyQt6.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QLabel
 from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QFontMetrics
-from .theme import AppTheme  # 相对引用
-
+from src.core.theme import AppTheme
 
 class MemoListItemWidget(QWidget):
     def __init__(self, title, preview, tags, time_str, parent=None):
@@ -57,33 +56,3 @@ class MemoListItemWidget(QWidget):
         self.preview_label.setText(
             fm2.elidedText(self.preview_text, Qt.TextElideMode.ElideRight, self.preview_label.width() * 2))
         self.preview_label.setWordWrap(True)
-# src/widgets.py (追加内容)
-# ... (保留原有 MemoListItemWidget) ...
-
-from PyQt6.QtWidgets import QPushButton
-from PyQt6.QtCore import pyqtSignal
-
-class TagButton(QPushButton):
-    """可点击的标签按钮"""
-    clicked_tag = pyqtSignal(str) # 发射标签文本
-
-    def __init__(self, text, parent=None):
-        super().__init__(f"#{text}", parent)
-        self.tag_text = text
-        self.setCursor(Qt.CursorShape.PointingHandCursor)
-        self.setStyleSheet(f"""
-            QPushButton {{
-                background-color: {AppTheme.COLORS['tag_bg']};
-                color: {AppTheme.COLORS['accent']};
-                border: 1px solid {AppTheme.COLORS['accent']};
-                border-radius: 12px;
-                padding: 2px 8px;
-                font-size: 11px;
-                margin-right: 4px;
-            }}
-            QPushButton:hover {{
-                background-color: {AppTheme.COLORS['accent']};
-                color: white;
-            }}
-        """)
-        self.clicked.connect(lambda: self.clicked_tag.emit(self.tag_text))
