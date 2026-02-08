@@ -60,21 +60,13 @@ class MainWindow(QMainWindow):
 
         # Search
         search_container = QWidget()
-        search_container.setStyleSheet(
-            f"background-color: {AppTheme.COLORS['bg_primary']}; "
-            f"border-bottom: 1px solid {AppTheme.COLORS['border']};"
-        )
+        search_container.setStyleSheet(f"background-color: {AppTheme.COLORS['bg_primary']}; border-bottom: 1px solid {AppTheme.COLORS['border']};")
         search_layout = QHBoxLayout(search_container)
-        search_layout.setContentsMargins(10, 8, 10, 8)
+        search_layout.setContentsMargins(16, 12, 16, 12) # Increased margins
 
         self.search_input = QLineEdit()
         self.search_input.setPlaceholderText("🔍 搜索备忘录...")
-        self.search_input.setStyleSheet(
-            f"QLineEdit {{ "
-            f"background-color: {AppTheme.COLORS['bg_secondary']}; "
-            f"border: none; border-radius: 15px; padding: 4px 12px; "
-            f"color: {AppTheme.COLORS['text_primary']}; }}"
-        )
+        self.search_input.setStyleSheet(AppTheme.get_stylesheet("SearchInput"))
         self.search_input.textChanged.connect(self.search_changed.emit)
         search_layout.addWidget(self.search_input)
         layout.addWidget(search_container)
@@ -83,17 +75,13 @@ class MainWindow(QMainWindow):
         # v2.0: QListView 替代 QListWidget
         # ========================================
         self.list_view = QListView()
-        self.list_view.setStyleSheet(
-            "QListView { border: none; background-color: #1e1e1e; }"
-            "QListView::item { border: none; }"
-            "QListView::item:selected { background-color: #4a4a4a; }"
-            "QListView::item:hover { background-color: #3d3d3d; }"
-        )
+        self.list_view.setStyleSheet(AppTheme.get_stylesheet("ListView"))
         self.list_view.setItemDelegate(self._delegate)
         self.list_view.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self.list_view.setVerticalScrollMode(QAbstractItemView.ScrollMode.ScrollPerPixel)
         self.list_view.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
         self.list_view.setUniformItemSizes(True)  # 性能优化
+        self.list_view.setSpacing(4) # Add spacing between items
         
         # 连接点击信号
         self.list_view.clicked.connect(self._on_item_clicked)
@@ -106,43 +94,35 @@ class MainWindow(QMainWindow):
 
     def _init_input_area(self, parent_layout):
         container = QWidget()
-        container.setStyleSheet("background-color: #2d2d30; border-top: 1px solid #3e3e42;")
+        container.setStyleSheet(f"background-color: {AppTheme.COLORS['bg_secondary']}; border-top: 1px solid {AppTheme.COLORS['border']};")
         v_layout = QVBoxLayout(container)
         v_layout.setContentsMargins(0, 0, 0, 0)
         v_layout.setSpacing(0)
 
         self.tag_bar = QWidget()
-        self.tag_bar.setFixedHeight(30)
+        self.tag_bar.setFixedHeight(34) # Slightly taller
         self.tag_bar_layout = QHBoxLayout(self.tag_bar)
-        self.tag_bar_layout.setContentsMargins(12, 4, 12, 0)
-        self.tag_bar_layout.setSpacing(4)
+        self.tag_bar_layout.setContentsMargins(12, 6, 12, 0)
+        self.tag_bar_layout.setSpacing(6)
         v_layout.addWidget(self.tag_bar)
 
         input_row = QWidget()
-        input_row.setFixedHeight(50)
+        input_row.setFixedHeight(56) # Taller input area
         h_layout = QHBoxLayout(input_row)
-        h_layout.setContentsMargins(12, 4, 12, 8)
+        h_layout.setContentsMargins(12, 8, 12, 12)
         h_layout.setSpacing(10)
 
         self.input_edit = QLineEdit()
         self.input_edit.setPlaceholderText("快速记录... (#标签)")
-        self.input_edit.setStyleSheet(
-            f"QLineEdit {{ "
-            f"background-color: #1e1e1e; color: #ECECF1; "
-            f"border: 1px solid #565869; border-radius: 6px; padding: 4px 8px; }} "
-            f"QLineEdit:focus {{ border: 1px solid {AppTheme.COLORS['accent']}; }}"
-        )
+        self.input_edit.setStyleSheet(AppTheme.get_stylesheet("MemoInput"))
         self.input_edit.returnPressed.connect(self._on_add_memo)
         h_layout.addWidget(self.input_edit)
 
         send_btn = QPushButton("发送")
         send_btn.setCursor(Qt.CursorShape.PointingHandCursor)
-        send_btn.setFixedWidth(60)
-        send_btn.setStyleSheet(
-            f"QPushButton {{ "
-            f"background-color: {AppTheme.COLORS['accent']}; color: white; "
-            f"border: none; border-radius: 6px; font-weight: bold; height: 28px; }}"
-        )
+        send_btn.setFixedWidth(64)
+        send_btn.setFixedHeight(32)
+        send_btn.setStyleSheet(AppTheme.get_stylesheet("PrimaryButton"))
         send_btn.clicked.connect(self._on_add_memo)
         h_layout.addWidget(send_btn)
 

@@ -53,6 +53,9 @@ class AppController(QObject):
         if db_path is None:
             db_path = Path(__file__).parent.parent.parent / "data" / "memoflow.db"
         
+        # 确保数据目录存在
+        Path(db_path).parent.mkdir(parents=True, exist_ok=True)
+        
         # 初始化组件
         self._db = DatabaseManager(str(db_path))
         self._worker = DatabaseWorker(self._db)
@@ -184,11 +187,13 @@ class AppController(QObject):
     
     def _on_memo_added(self, memo_id: int, callback_id: str) -> None:
         """备忘录添加完成回调"""
-        # 从数据库获取完整记录
-        record = self._db.get_memo_by_id(memo_id)
-        if record:
-            memo = Memo.from_db_record(record)
-            self._model.addMemo(memo)
+        # Reload to ensure correct order (pinned) and filtering
+        if self._current_tag_filter:
+            self.filter_by_tag(self._current_tag_filter)
+        elif self._pending_search_query:
+            self._execute_search()
+        else:
+            self.load_memos()
         
         self.memo_added.emit(memo_id)
         self.load_tags()  # 可能有新标签

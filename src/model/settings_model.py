@@ -2,6 +2,8 @@
 # -*- coding: utf-8 -*-
 import json
 import os
+import shutil
+from pathlib import Path
 from src.core.utils import SETTINGS_PATH
 
 class SettingsModel:
@@ -22,7 +24,17 @@ class SettingsModel:
         try:
             with open(self.file_path, 'r', encoding='utf-8') as f:
                 return json.load(f)
-        except:
+        except json.JSONDecodeError as e:
+            # 备份损坏的文件
+            backup_path = Path(self.file_path).with_suffix('.json.corrupted')
+            try:
+                shutil.copy(self.file_path, backup_path)
+                print(f"⚠️ Settings file corrupted, backed up to: {backup_path}")
+            except:
+                pass
+            return {}
+        except IOError as e:
+            print(f"⚠️ Failed to read settings file: {e}")
             return {}
 
     def get(self, key, default=None):

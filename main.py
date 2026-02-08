@@ -11,7 +11,7 @@ MemoFlow v2.0 入口文件
 
 import sys
 from PyQt6.QtWidgets import QApplication, QDialog, QVBoxLayout
-from PyQt6.QtCore import QObject
+from PyQt6.QtCore import QObject, QTimer
 
 from src.controller.app_controller import AppController
 from src.view.main_window import MainWindow
@@ -45,8 +45,14 @@ class MemoFlowApp(QObject):
         self.editor_dialog = None
         
         # 状态
-        self.current_floating_index = 0
+        self.current_floating_memo_id = None  # 使用 ID 而非索引追踪
         self.current_edit_id = None
+        
+        # 防抖定时器（避免双击时触发两次单击）
+        self.click_timer = QTimer()
+        self.click_timer.setSingleShot(True)
+        self.click_timer.timeout.connect(self._process_single_click)
+        self.pending_click_id = None
         
         # 初始化
         self._sync_autostart()
@@ -126,20 +132,32 @@ class MemoFlowApp(QObject):
         self.main_window.scroll_to_top()
     
     def _on_memo_clicked(self, memo_id):
-        """点击备忘录"""
+        """点击备忘录 - 使用防抖避免双击冲突"""
+        self.pending_click_id = memo_id
+        self.click_timer.start(200)  # 200ms 延迟，双击会取消
+    
+    def _process_single_click(self):
+        """处理实际的单击事件"""
+        if self.pending_click_id is None:
+            return
+        
+        memo_id = self.pending_click_id
+        self.pending_click_id = None
+        
         memo = self.controller.model.getMemoById(memo_id)
         if memo:
-            # 更新浮动窗口索引
-            row = self.controller.model.getRowById(memo_id)
-            if row >= 0:
-                self.current_floating_index = row
+            # 更新当前 ID
+            self.current_floating_memo_id = memo_id
             
             self.floating_window.update_content(memo.title, memo.content)
             self.floating_window.show()
             self.floating_window.expand_window()
     
     def _on_memo_double_clicked(self, memo_id):
-        """双击备忘录 - 打开编辑器"""
+        """双击备忘录 - 取消单击并打开编辑器"""
+        self.click_timer.stop()  # 取消待处理的单击
+        self.pending_click_id = None
+        
         memo = self.controller.model.getMemoById(memo_id)
         if memo:
             self._open_editor(memo)
@@ -151,6 +169,7 @@ class MemoFlowApp(QObject):
     def _open_editor(self, memo):
         self.current_edit_id = memo.id
         
+        # 创建编辑器对话框（每次都是新实例，exec() 阻塞结束后会自动清理）
         self.editor_dialog_window = QDialog(self.main_window)
         self.editor_dialog_window.setWindowTitle(f"编辑 - {memo.title}")
         self.editor_dialog_window.resize(500, 400)
@@ -160,9 +179,14 @@ class MemoFlowApp(QObject):
         layout.setContentsMargins(0, 0, 0, 0)
         layout.addWidget(self.editor_view)
         
-        preset_tags = self.settings_model.get("preset_tags", [])
-        self.editor_view.set_content(memo.title, memo.content, memo.tags, preset_tags)
+        # Split content into title (first line) and body (rest)
+        title = memo.title
+        body = memo.content.partition('\n')[2]
         
+        preset_tags = self.settings_model.get("preset_tags", [])
+        self.editor_view.set_content(title, body, memo.tags, preset_tags)
+        
+        # 连接信号（对话框关闭时自动断开，不会泄漏）
         self.editor_view.save_requested.connect(self._on_editor_save)
         self.editor_view.cancel_requested.connect(self.editor_dialog_window.reject)
         self.editor_view.delete_requested.connect(self._on_editor_delete)
@@ -172,15 +196,31 @@ class MemoFlowApp(QObject):
     
     def _on_editor_save(self, title, content, tags):
         if self.current_edit_id:
-            # 组合 title 和 content
-            full_content = f"{title}\n{content}" if title != content.split('\n')[0] else content
+            # Always combine title and content with a newline
+            full_content = f"{title}\n{content}"
             self.controller.update_memo(self.current_edit_id, full_content, tags)
-            self.floating_window.update_content(title, content)
+            
+            # 同步到悬浮窗（如果是当前显示的备忘录）
+            if self.current_floating_memo_id == self.current_edit_id:
+                self.floating_window.update_content(title, content)
         self.editor_dialog_window.accept()
     
     def _on_editor_delete(self):
         if self.current_edit_id:
-            self.controller.delete_memo(self.current_edit_id)
+            deleted_id = self.current_edit_id
+            self.controller.delete_memo(deleted_id)
+            
+            # 如果删除的是当前悬浮窗显示的备忘录
+            if deleted_id == self.current_floating_memo_id:
+                self.current_floating_memo_id = None
+                # 尝试显示下一条
+                if len(self.controller.model) > 0:
+                    memo = self.controller.model.getMemo(0)
+                    if memo:
+                        self.current_floating_memo_id = memo.id
+                        self.floating_window.update_content(memo.title, memo.content)
+                else:
+                    self.floating_window.hide()
         self.editor_dialog_window.accept()
     
     # ========================================
@@ -190,12 +230,32 @@ class MemoFlowApp(QObject):
     def _navigate_memo(self, offset):
         model = self.controller.model
         if len(model) == 0:
+            self.floating_window.hide()
             return
         
-        new_index = (self.current_floating_index + offset) % len(model)
-        self.current_floating_index = new_index
-        memo = model.getMemo(new_index)
+        # 如果没有当前 ID，从第一条开始
+        if not self.current_floating_memo_id:
+            memo = model.getMemo(0)
+            if memo:
+                self.current_floating_memo_id = memo.id
+                self.floating_window.update_content(memo.title, memo.content)
+            return
+        
+        # 找到当前备忘录的行号
+        current_row = model.getRowById(self.current_floating_memo_id)
+        if current_row < 0:
+            # 当前备忘录不在列表中（被删除或过滤），从第一条开始
+            memo = model.getMemo(0)
+            if memo:
+                self.current_floating_memo_id = memo.id
+                self.floating_window.update_content(memo.title, memo.content)
+            return
+        
+        # 计算新行号
+        new_row = (current_row + offset) % len(model)
+        memo = model.getMemo(new_row)
         if memo:
+            self.current_floating_memo_id = memo.id
             self.floating_window.update_content(memo.title, memo.content)
     
     def _on_floating_ontop_toggled(self, checked):
@@ -214,7 +274,10 @@ class MemoFlowApp(QObject):
         dialog.closetotray_toggled.connect(lambda c: self.settings_model.set("close_to_tray", c))
         dialog.floating_toggled.connect(self._on_setting_floating_toggled)
         dialog.ontop_toggled.connect(self._on_floating_ontop_toggled)
-        dialog.autohide_changed.connect(lambda v: self.settings_model.set("auto_hide_seconds", v))
+        dialog.autohide_changed.connect(lambda v: (
+            self.settings_model.set("auto_hide_seconds", v),
+            self.floating_window.sync_timer_settings()  # 立即同步
+        ))
         dialog.preset_tags_changed.connect(lambda t: self.settings_model.set("preset_tags", t))
         
         if dialog.exec():

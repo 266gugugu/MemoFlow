@@ -61,12 +61,36 @@ class DatabaseManager:
     def _init_schema(self) -> None:
         """初始化数据库表结构"""
         schema_path = Path(__file__).parent / "schema.sql"
-        if schema_path.exists():
+        
+        # 验证 schema 文件存在
+        if not schema_path.exists():
+            raise FileNotFoundError(
+                f"Database schema file not found: {schema_path}\n"
+                "Please ensure schema.sql is present in the database directory."
+            )
+        
+        try:
             with open(schema_path, 'r', encoding='utf-8') as f:
                 schema_sql = f.read()
+        except PermissionError as e:
+            raise PermissionError(
+                f"Permission denied reading schema file: {schema_path}"
+            ) from e
+        except IOError as e:
+            raise IOError(
+                f"Failed to read schema file: {schema_path}"
+            ) from e
+        
+        try:
             conn = self._get_connection()
             conn.executescript(schema_sql)
             conn.commit()
+        except Exception as e:
+            raise RuntimeError(
+                f"Failed to execute database schema. "
+                f"The schema.sql file may be corrupted or contain invalid SQL.\n"
+                f"Error: {e}"
+            ) from e
     
     # ========================================
     # 读操作 (可在主线程直接调用)

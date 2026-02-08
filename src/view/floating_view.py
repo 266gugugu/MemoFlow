@@ -89,14 +89,17 @@ class FloatingView(QWidget):
     def _init_animations(self):
         self.anim_group = QParallelAnimationGroup(self)
         self.anim_geo = QPropertyAnimation(self, b"geometry")
-        self.anim_geo.setDuration(300)
-        self.anim_geo.setEasingCurve(QEasingCurve.Type.OutCubic)
+        self.anim_geo.setDuration(180)  # 从 300ms 优化为 180ms
+        self.anim_geo.setEasingCurve(QEasingCurve.Type.InOutQuad)  # 更灵敏的曲线
 
         self.anim_opacity = QPropertyAnimation(self, b"windowOpacity")
-        self.anim_opacity.setDuration(300)
+        self.anim_opacity.setDuration(180)
 
         self.anim_group.addAnimation(self.anim_geo)
         self.anim_group.addAnimation(self.anim_opacity)
+        
+        # 动画完成后同步状态
+        self.anim_group.finished.connect(self._on_animation_finished)
 
     def update_content(self, title, content):
         self.title_label.setText(title)
@@ -146,13 +149,10 @@ class FloatingView(QWidget):
         self.anim_opacity.setStartValue(self.windowOpacity())
         self.anim_opacity.setEndValue(1.0)
         self.anim_group.start()
-        self.is_expanded = True
+        self._target_expanded = True
 
     def collapse_window(self):
-        if self.underMouse():
-            self.auto_hide_timer.start()
-            return
-        
+        # 移除鼠标检查，由调用者决定是否收起
         self.force_stop_animation()
         current_geo = self.geometry()
         target_geo = QRect(current_geo.x(), 0, current_geo.width(), self.collapsed_height)
@@ -162,8 +162,13 @@ class FloatingView(QWidget):
         self.anim_opacity.setStartValue(self.windowOpacity())
         self.anim_opacity.setEndValue(0.5)
         self.anim_group.start()
-        self.is_expanded = False
+        self._target_expanded = False
         self.auto_hide_timer.stop()
+    
+    def _on_animation_finished(self):
+        """动画完成后同步状态"""
+        self.is_expanded = self._target_expanded
+
 
     def toggle_visibility(self):
         if self.isVisible() and not self.isMinimized():
@@ -210,12 +215,14 @@ class FloatingView(QWidget):
     def enterEvent(self, event):
         if self.settings.get("show_floating_window", True):
             self.auto_hide_timer.stop()
-            self.expand_window()
+            if not self.is_expanded:  # 只在收起状态才展开
+                self.expand_window()
         super().enterEvent(event)
 
     def leaveEvent(self, event):
-        self.sync_timer_settings()
-        self.auto_hide_timer.start()
+        if not self.underMouse():  # 确保鼠标真的离开了
+            self.sync_timer_settings()
+            self.auto_hide_timer.start()
         super().leaveEvent(event)
 
     def mousePressEvent(self, event):

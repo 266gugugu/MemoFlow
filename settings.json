@@ -1,5 +1,5 @@
 {
-  "always_on_top": false,
+  "always_on_top": true,
   "auto_start": true,
   "preset_tags": [
     "工作",
@@ -8,8 +8,9 @@
     "重要",
     "第五人格"
   ],
-  "win_x": 676,
+  "win_x": 701,
   "win_y": -24,
   "close_to_tray": true,
-  "auto_hide_seconds": 61
+  "auto_hide_seconds": 1,
+  "show_floating_window": true
 }
