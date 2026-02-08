@@ -1,17 +1,34 @@
 # src/view/main_window.py
 # -*- coding: utf-8 -*-
+"""
+MemoFlow v2.0 主窗口
+
+重构要点:
+- QListWidget → QListView + MemoListModel
+- MemoListItemWidget → MemoDelegate (QPainter 绘制)
+- 保持原有信号接口兼容
+"""
+
 from PyQt6.QtWidgets import (QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, 
-                             QListWidget, QSystemTrayIcon, QMenu, QLineEdit, 
-                             QPushButton, QListWidgetItem)
-from PyQt6.QtCore import Qt, pyqtSignal, QSize
+                             QListView, QSystemTrayIcon, QMenu, QLineEdit, 
+                             QPushButton, QAbstractItemView)
+from PyQt6.QtCore import Qt, pyqtSignal, QModelIndex
 from PyQt6.QtGui import QAction, QColor, QIcon, QPixmap, QPainter, QBrush
 
 from src.core.theme import AppTheme
-from src.view.widgets.memo_item import MemoListItemWidget
+from src.view.memo_delegate import MemoDelegate
 from src.view.widgets.tag_button import TagButton
+from src.model.memo_list_model import MemoListModel
+
 
 class MainWindow(QMainWindow):
-    # Signals
+    """
+    MemoFlow 主窗口 (v2.0)
+    
+    使用 QListView + MemoListModel 实现高性能虚拟列表
+    """
+    
+    # Signals (保持兼容)
     search_changed = pyqtSignal(str)
     memo_added = pyqtSignal(str)
     memo_clicked = pyqtSignal(int)
@@ -25,6 +42,11 @@ class MainWindow(QMainWindow):
         super().__init__()
         self.setWindowTitle("MemoFlow")
         self.resize(400, 600)
+        
+        # 内部组件
+        self._model: MemoListModel = None
+        self._delegate = MemoDelegate()
+        
         self._init_ui()
         self._init_tray()
 
@@ -38,24 +60,46 @@ class MainWindow(QMainWindow):
 
         # Search
         search_container = QWidget()
-        search_container.setStyleSheet(f"background-color: {AppTheme.COLORS['bg_primary']}; border-bottom: 1px solid {AppTheme.COLORS['border']};")
+        search_container.setStyleSheet(
+            f"background-color: {AppTheme.COLORS['bg_primary']}; "
+            f"border-bottom: 1px solid {AppTheme.COLORS['border']};"
+        )
         search_layout = QHBoxLayout(search_container)
         search_layout.setContentsMargins(10, 8, 10, 8)
 
         self.search_input = QLineEdit()
         self.search_input.setPlaceholderText("🔍 搜索备忘录...")
-        self.search_input.setStyleSheet(f"QLineEdit {{ background-color: {AppTheme.COLORS['bg_secondary']}; border: none; border-radius: 15px; padding: 4px 12px; color: {AppTheme.COLORS['text_primary']}; }}")
+        self.search_input.setStyleSheet(
+            f"QLineEdit {{ "
+            f"background-color: {AppTheme.COLORS['bg_secondary']}; "
+            f"border: none; border-radius: 15px; padding: 4px 12px; "
+            f"color: {AppTheme.COLORS['text_primary']}; }}"
+        )
         self.search_input.textChanged.connect(self.search_changed.emit)
         search_layout.addWidget(self.search_input)
         layout.addWidget(search_container)
 
-        # List
-        self.list_widget = QListWidget()
-        self.list_widget.setStyleSheet("QListWidget { border: none; background-color: #1e1e1e; }")
-        self.list_widget.setAlternatingRowColors(False)
-        self.list_widget.itemClicked.connect(self._on_item_clicked)
-        self.list_widget.itemDoubleClicked.connect(self._on_item_double_clicked)
-        layout.addWidget(self.list_widget)
+        # ========================================
+        # v2.0: QListView 替代 QListWidget
+        # ========================================
+        self.list_view = QListView()
+        self.list_view.setStyleSheet(
+            "QListView { border: none; background-color: #1e1e1e; }"
+            "QListView::item { border: none; }"
+            "QListView::item:selected { background-color: #4a4a4a; }"
+            "QListView::item:hover { background-color: #3d3d3d; }"
+        )
+        self.list_view.setItemDelegate(self._delegate)
+        self.list_view.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.list_view.setVerticalScrollMode(QAbstractItemView.ScrollMode.ScrollPerPixel)
+        self.list_view.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
+        self.list_view.setUniformItemSizes(True)  # 性能优化
+        
+        # 连接点击信号
+        self.list_view.clicked.connect(self._on_item_clicked)
+        self.list_view.doubleClicked.connect(self._on_item_double_clicked)
+        
+        layout.addWidget(self.list_view)
 
         # Input Area
         self._init_input_area(layout)
@@ -82,14 +126,23 @@ class MainWindow(QMainWindow):
 
         self.input_edit = QLineEdit()
         self.input_edit.setPlaceholderText("快速记录... (#标签)")
-        self.input_edit.setStyleSheet(f"QLineEdit {{ background-color: #1e1e1e; color: #ECECF1; border: 1px solid #565869; border-radius: 6px; padding: 4px 8px; }} QLineEdit:focus {{ border: 1px solid {AppTheme.COLORS['accent']}; }}")
+        self.input_edit.setStyleSheet(
+            f"QLineEdit {{ "
+            f"background-color: #1e1e1e; color: #ECECF1; "
+            f"border: 1px solid #565869; border-radius: 6px; padding: 4px 8px; }} "
+            f"QLineEdit:focus {{ border: 1px solid {AppTheme.COLORS['accent']}; }}"
+        )
         self.input_edit.returnPressed.connect(self._on_add_memo)
         h_layout.addWidget(self.input_edit)
 
         send_btn = QPushButton("发送")
         send_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         send_btn.setFixedWidth(60)
-        send_btn.setStyleSheet(f"QPushButton {{ background-color: {AppTheme.COLORS['accent']}; color: white; border: none; border-radius: 6px; font-weight: bold; height: 28px; }}")
+        send_btn.setStyleSheet(
+            f"QPushButton {{ "
+            f"background-color: {AppTheme.COLORS['accent']}; color: white; "
+            f"border: none; border-radius: 6px; font-weight: bold; height: 28px; }}"
+        )
         send_btn.clicked.connect(self._on_add_memo)
         h_layout.addWidget(send_btn)
 
@@ -110,7 +163,13 @@ class MainWindow(QMainWindow):
         self.tray.setToolTip("MemoFlow")
 
         menu = QMenu()
-        menu.setStyleSheet(f"QMenu {{ background-color: {AppTheme.COLORS['bg_secondary']}; color: {AppTheme.COLORS['text_primary']}; border: 1px solid {AppTheme.COLORS['border']}; }} QMenu::item:selected {{ background-color: {AppTheme.COLORS['accent']}; }}")
+        menu.setStyleSheet(
+            f"QMenu {{ "
+            f"background-color: {AppTheme.COLORS['bg_secondary']}; "
+            f"color: {AppTheme.COLORS['text_primary']}; "
+            f"border: 1px solid {AppTheme.COLORS['border']}; }} "
+            f"QMenu::item:selected {{ background-color: {AppTheme.COLORS['accent']}; }}"
+        )
 
         action_show = QAction("显示主窗口", self)
         action_show.triggered.connect(self.show_requested.emit)
@@ -133,19 +192,35 @@ class MainWindow(QMainWindow):
         self.tray.activated.connect(self._on_tray_activated)
         self.tray.show()
 
-    def update_memo_list(self, memos):
-        self.list_widget.clear()
-        for m in memos:
-            item = QListWidgetItem(self.list_widget)
-            widget = MemoListItemWidget(m.title, m.content, m.tags, m.time_str)
-            item.setSizeHint(QSize(0, 80))
-            item.setData(Qt.ItemDataRole.UserRole, m.id)
-            self.list_widget.setItemWidget(item, widget)
+    # ========================================
+    # v2.0: Model 绑定方法
+    # ========================================
+    
+    def setModel(self, model: MemoListModel) -> None:
+        """
+        绑定 MemoListModel
+        
+        由 AppController 调用:
+            main_window.setModel(controller.model)
+        """
+        self._model = model
+        self.list_view.setModel(model)
+    
+    def update_memo_list(self, memos) -> None:
+        """
+        兼容 v1.0 接口
+        
+        如果已绑定 Model，则通过 Model 更新数据
+        否则忽略（应通过 setModel 绑定）
+        """
+        if self._model:
+            self._model.setMemos(memos)
 
     def update_tag_bar(self, tags):
         while self.tag_bar_layout.count():
             child = self.tag_bar_layout.takeAt(0)
-            if child.widget(): child.widget().deleteLater()
+            if child.widget(): 
+                child.widget().deleteLater()
         
         for tag in tags:
             btn = TagButton(tag)
@@ -157,7 +232,8 @@ class MainWindow(QMainWindow):
         self.input_edit.clear()
 
     def scroll_to_top(self):
-        self.list_widget.scrollToTop()
+        if self._model and self._model.rowCount() > 0:
+            self.list_view.scrollToTop()
 
     def _on_add_memo(self):
         text = self.input_edit.text().strip()
@@ -167,31 +243,31 @@ class MainWindow(QMainWindow):
     def _insert_tag(self, tag_text):
         current = self.input_edit.text()
         tag_str = f"#{tag_text}"
-        if tag_str in current: return
+        if tag_str in current: 
+            return
         prefix = " " if current and not current.endswith(" ") else ""
         self.input_edit.setText(f"{current}{prefix}{tag_str} ")
         self.input_edit.setFocus()
 
-    def _on_item_clicked(self, item):
-        memo_id = item.data(Qt.ItemDataRole.UserRole)
-        self.memo_clicked.emit(memo_id)
+    def _on_item_clicked(self, index: QModelIndex):
+        """v2.0: 从 Model 获取 memo_id"""
+        if index.isValid():
+            memo_id = index.data(MemoListModel.MemoIdRole)
+            if memo_id is not None:
+                self.memo_clicked.emit(memo_id)
 
-    def _on_item_double_clicked(self, item):
-        memo_id = item.data(Qt.ItemDataRole.UserRole)
-        self.memo_double_clicked.emit(memo_id)
+    def _on_item_double_clicked(self, index: QModelIndex):
+        """v2.0: 从 Model 获取 memo_id"""
+        if index.isValid():
+            memo_id = index.data(MemoListModel.MemoIdRole)
+            if memo_id is not None:
+                self.memo_double_clicked.emit(memo_id)
 
     def _on_tray_activated(self, reason):
-        if reason in (QSystemTrayIcon.ActivationReason.Trigger, QSystemTrayIcon.ActivationReason.DoubleClick):
+        if reason in (QSystemTrayIcon.ActivationReason.Trigger, 
+                      QSystemTrayIcon.ActivationReason.DoubleClick):
             self.show_requested.emit()
 
     def closeEvent(self, event):
-        # We handle close event in Presenter via Signals, but QMainWindow closeEvent needs to be managed
-        # By default, we ignore here and let Presenter decide (hide or quit)
-        # But for MVP, View just emits signal. 
-        # Actually, it's easier to check logic here or forward to presenter.
-        # Let's emit a signal and ignore the event first, Presenter can quit app if needed.
-        # BUT standard PyQt way: if we ignore, window stays open. 
-        # So we need to know if we should hide or quit.
-        # Let's simplify: View asks Presenter "I am closing", Presenter decides what to do.
-        # However, closeEvent is synchronous.
-        pass # Logic will be injected or handled by Presenter connecting to the window
+        # 由 Presenter/Controller 处理
+        pass
